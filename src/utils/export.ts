@@ -3,6 +3,7 @@
  */
 
 import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { ReconciliationFull, ReconciliationResult } from '../types';
 import { formatPrice, formatPercent } from './normalization';
@@ -132,11 +133,13 @@ export function exportToJSON(data: ReconciliationFull): void {
 }
 
 /**
- * Экспорт заказа с ценами из матрицы (в формате исходного заказа)
+ * Экспорт заказа с ценами из матрицы (сохраняя форматирование исходного файла)
  */
-export function exportOrderWithMatrixPrices(data: ReconciliationFull): void {
-  const { orderData, results } = data;
-  const { header, items } = orderData;
+export async function exportOrderWithMatrixPrices(
+  data: ReconciliationFull,
+  originalFile: File
+): Promise<void> {
+  const { results } = data;
   
   // Создаём карту корректировок: индекс позиции -> новая цена
   const correctionsMap = new Map<number, number>();
@@ -146,150 +149,82 @@ export function exportOrderWithMatrixPrices(data: ReconciliationFull): void {
     }
   });
   
-  // Создаём новый Workbook
-  const wb = XLSX.utils.book_new();
+  // Читаем исходный файл с помощью exceljs
+  const workbook = new ExcelJS.Workbook();
+  const buffer = await originalFile.arrayBuffer();
+  await workbook.xlsx.load(buffer);
   
-  // Формируем данные листа
-  const wsData: any[][] = [];
+  // Получаем первый лист
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) {
+    throw new Error('Не найден лист в файле заказа');
+  }
   
-  // Шапка заказа
-  wsData.push([`Заказ поставщику ${header.orderNumber ? '№ ' + header.orderNumber : ''} ${header.orderDate ? 'от ' + header.orderDate : ''}`]);
-  wsData.push([]);
+  // Находим строку с заголовками таблицы
+  let headerRowNum = -1;
+  let priceColNum = -1;
+  let sumColNum = -1;
   
-  if (header.supplier) wsData.push(['Поставщик:', header.supplier]);
-  if (header.buyer) wsData.push(['Покупатель:', header.buyer]);
-  if (header.receiver) wsData.push(['Грузополучатель:', header.receiver]);
-  if (header.warehouse) wsData.push(['Склад:', header.warehouse]);
-  
-  wsData.push([]);
-  
-  // Заголовки таблицы
-  wsData.push(['№', 'Штрихкод', 'Наименование', 'Квант', 'Кол-во', 'Ед.', 'Цена', 'Сумма']);
-  
-  // Строки данных с новыми ценами
-  items.forEach((item, idx) => {
-    const newPrice = correctionsMap.get(idx);
-    const price = newPrice !== undefined ? newPrice : item.price;
-    const quantity = item.quantity || 1;
-    const sum = price * quantity;
-    
-    wsData.push([
-      item.rowNumber,
-      item.barcode,
-      item.name,
-      item.quant,
-      item.quantity,
-      item.unit,
-      price,
-      sum,
-    ]);
+  worksheet.eachRow((row, rowNumber) => {
+    const firstCell = row.getCell(1).value;
+    if (firstCell && typeof firstCell === 'string' && 
+        (firstCell.toLowerCase().includes('наименование') || firstCell.toLowerCase().includes('товар'))) {
+      headerRowNum = rowNumber;
+      
+      // Ищем колонки с ценами и суммами
+      row.eachCell((cell, colNumber) => {
+        const cellValue = cell.value;
+        if (cellValue && typeof cellValue === 'string') {
+          const lowerValue = cellValue.toLowerCase();
+          if (lowerValue.includes('цена') && !lowerValue.includes('сумма')) {
+            priceColNum = colNumber;
+          } else if (lowerValue.includes('сумма')) {
+            sumColNum = colNumber;
+          }
+        }
+      });
+    }
   });
   
-  // Итого
-  const totalSum = items.reduce((acc, item, idx) => {
-    const newPrice = correctionsMap.get(idx);
-    const price = newPrice !== undefined ? newPrice : item.price;
-    const quantity = item.quantity || 1;
-    return acc + (price * quantity);
-  }, 0);
+  if (headerRowNum === -1 || priceColNum === -1) {
+    throw new Error('Не найдена строка с заголовками или колонка с ценами');
+  }
   
-  wsData.push([]);
-  wsData.push(['Итого', '', '', '', '', '', '', totalSum]);
-  
-  // Создаём лист
-  const ws = XLSX.utils.aoa_to_sheet(wsData);
-  
-  // Устанавливаем ширины колонок (как в типичном заказе)
-  ws['!cols'] = [
-    { wch: 5 },   // №
-    { wch: 14 },  // Штрихкод
-    { wch: 50 },  // Наименование
-    { wch: 8 },   // Квант
-    { wch: 8 },   // Кол-во
-    { wch: 6 },   // Ед.
-    { wch: 12 },  // Цена
-    { wch: 14 },  // Сумма
-  ];
-  
-  // Устанавливаем стили ячеек
-  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
-  
-  for (let R = range.s.r; R <= range.e.r; ++R) {
-    for (let C = range.s.c; C <= range.e.c; ++C) {
-      const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
-      if (!ws[cellAddress]) continue;
+  // Обновляем цены и суммы для каждой позиции
+  let itemIndex = 0;
+  worksheet.eachRow((row, rowNumber) => {
+    if (rowNumber <= headerRowNum) return;
+    
+    const firstCell = row.getCell(1).value;
+    // Проверяем, что это строка с данными (номер или наименование)
+    if (firstCell && (typeof firstCell === 'number' || (typeof firstCell === 'string' && firstCell.trim()))) {
+      // Проверяем, что это не итоговая строка
+      const rowText = row.getCell(2).value?.toString().toLowerCase() || '';
+      if (rowText.includes('итого') || rowText.includes('всего')) return;
       
-      // Заголовок заказа (первая строка)
-      if (R === 0) {
-        ws[cellAddress].s = {
-          font: { bold: true, sz: 14 },
-          alignment: { horizontal: 'left' },
-        };
-      }
-      // Заголовки таблицы
-      else if (wsData[R] && typeof wsData[R][0] === 'string' && 
-               ['№', 'Штрихкод', 'Наименование'].includes(wsData[R][0])) {
-        ws[cellAddress].s = {
-          font: { bold: true, sz: 11 },
-          fill: { fgColor: { rgb: 'E7E6E6' } },
-          alignment: { horizontal: 'center', vertical: 'center' },
-          border: {
-            top: { style: 'thin', color: { rgb: '000000' } },
-            bottom: { style: 'thin', color: { rgb: '000000' } },
-            left: { style: 'thin', color: { rgb: '000000' } },
-            right: { style: 'thin', color: { rgb: '000000' } },
-          },
-        };
-      }
-      // Строки данных
-      else if (R > 0 && wsData[R] && typeof wsData[R][0] === 'number') {
-        ws[cellAddress].s = {
-          font: { sz: 10 },
-          alignment: { 
-            horizontal: C === 2 ? 'left' : C === 0 ? 'center' : 'right',
-            vertical: 'center',
-            wrapText: C === 2,
-          },
-          border: {
-            top: { style: 'thin', color: { rgb: '000000' } },
-            bottom: { style: 'thin', color: { rgb: '000000' } },
-            left: { style: 'thin', color: { rgb: '000000' } },
-            right: { style: 'thin', color: { rgb: '000000' } },
-          },
-        };
+      const newPrice = correctionsMap.get(itemIndex);
+      if (newPrice !== undefined) {
+        // Обновляем цену
+        const priceCell = row.getCell(priceColNum);
+        priceCell.value = newPrice;
         
-        // Формат для числовых ячеек
-        if (C === 6 || C === 7) { // Цена и Сумма
-          ws[cellAddress].z = '#,##0.00';
+        // Обновляем сумму, если есть колонка сумм
+        if (sumColNum > 0) {
+          const qtyCell = row.getCell(priceColNum - 1); // Колонка перед ценой обычно количество
+          const qty = typeof qtyCell.value === 'number' ? qtyCell.value : 1;
+          const sumCell = row.getCell(sumColNum);
+          sumCell.value = newPrice * qty;
         }
       }
-      // Итого
-      else if (wsData[R] && wsData[R][0] === 'Итого') {
-        ws[cellAddress].s = {
-          font: { bold: true, sz: 11 },
-          alignment: { horizontal: C === 7 ? 'right' : 'left' },
-          border: {
-            top: { style: 'medium', color: { rgb: '000000' } },
-            bottom: { style: 'medium', color: { rgb: '000000' } },
-          },
-        };
-        if (C === 7) {
-          ws[cellAddress].z = '#,##0.00';
-        }
-      }
+      
+      itemIndex++;
     }
-  }
+  });
   
-  // Устанавливаем высоту строк
-  ws['!rows'] = [];
-  for (let R = 0; R <= range.e.r; ++R) {
-    ws['!rows'].push({ hpt: R === 0 ? 20 : 15 });
-  }
-  
-  XLSX.utils.book_append_sheet(wb, ws, 'Заказ');
-  
-  // Сохраняем
-  const wbout = XLSX.write(wb, { bookType: 'xlsx', bookSST: false, type: 'array' });
-  const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  // Сохраняем workbook
+  const outputBuffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([outputBuffer], { 
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+  });
   saveAs(blob, `Заказ_с_ценами_матрицы_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
