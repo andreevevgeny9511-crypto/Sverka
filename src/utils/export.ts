@@ -139,155 +139,129 @@ export async function exportOrderWithMatrixPrices(
   data: ReconciliationFull,
   originalFile: File
 ): Promise<void> {
-  const { results, orderData } = data;
+  const { results } = data;
   
-  // Создаём карту корректировок: индекс позиции -> новая цена
-  const correctionsMap = new Map<number, number>();
+  // Создаём карту корректировок: индекс позиции -> {новая цена, статус}
+  const correctionsMap = new Map<number, { price: number | null; status: string }>();
   results.forEach((r, idx) => {
-    if (r.matrixPrice !== null && (r.status === 'MATCH' || r.status === 'MISMATCH' || r.status === 'FUZZY_MATCH')) {
-      correctionsMap.set(idx, r.matrixPrice);
+    if (r.status === 'MATCH' || r.status === 'MISMATCH' || r.status === 'FUZZY_MATCH') {
+      correctionsMap.set(idx, { price: r.matrixPrice, status: r.status });
+    } else if (r.status === 'NOT_FOUND_IN_MATRIX' || r.status === 'NO_PRICE') {
+      correctionsMap.set(idx, { price: null, status: r.status });
     }
   });
   
-  try {
-    // Читаем исходный файл с помощью exceljs
-    const workbook = new ExcelJS.Workbook();
-    const buffer = await originalFile.arrayBuffer();
-    await workbook.xlsx.load(buffer);
+  // Читаем исходный файл с помощью exceljs
+  const workbook = new ExcelJS.Workbook();
+  const buffer = await originalFile.arrayBuffer();
+  await workbook.xlsx.load(buffer);
+  
+  // Получаем первый лист
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) {
+    throw new Error('Не найден лист в файле заказа');
+  }
+  
+  // Находим строку с заголовками таблицы (ищем любую ячейку с текстом "наименование" или "товар")
+  let headerRowNum = -1;
+  let priceColNum = -1;
+  let sumColNum = -1;
+  let qtyColNum = -1;
+  
+  worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    let hasName = false;
+    let hasPrice = false;
+    let hasSum = false;
     
-    // Получаем первый лист
-    const worksheet = workbook.worksheets[0];
-    if (!worksheet) {
-      throw new Error('Не найден лист в файле заказа');
-    }
-    
-    // Находим строку с заголовками таблицы
-    let headerRowNum = -1;
-    let priceColNum = -1;
-    let sumColNum = -1;
-    
-    worksheet.eachRow((row, rowNumber) => {
-      const firstCell = row.getCell(1).value;
-      if (firstCell && typeof firstCell === 'string' && 
-          (firstCell.toLowerCase().includes('наименование') || firstCell.toLowerCase().includes('товар'))) {
-        headerRowNum = rowNumber;
-        
-        // Ищем колонки с ценами и суммами
-        row.eachCell((cell, colNumber) => {
-          const cellValue = cell.value;
-          if (cellValue && typeof cellValue === 'string') {
-            const lowerValue = cellValue.toLowerCase();
-            if (lowerValue.includes('цена') && !lowerValue.includes('сумма')) {
-              priceColNum = colNumber;
-            } else if (lowerValue.includes('сумма')) {
-              sumColNum = colNumber;
-            }
-          }
-        });
+    row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+      const cellValue = cell.value;
+      if (cellValue && typeof cellValue === 'string') {
+        const lowerValue = cellValue.toLowerCase();
+        if (lowerValue.includes('наименование') || lowerValue.includes('товар')) {
+          hasName = true;
+        }
+        if (lowerValue.includes('цена') && !lowerValue.includes('сумма')) {
+          priceColNum = colNumber;
+          hasPrice = true;
+        }
+        if (lowerValue.includes('сумма')) {
+          sumColNum = colNumber;
+          hasSum = true;
+        }
+        if (lowerValue.includes('кол-во') || lowerValue.includes('количество')) {
+          qtyColNum = colNumber;
+        }
       }
     });
     
-    if (headerRowNum === -1 || priceColNum === -1) {
-      throw new Error('Не найдена строка с заголовками или колонка с ценами');
+    if (hasName && (hasPrice || hasSum)) {
+      headerRowNum = rowNumber;
     }
+  });
+  
+  if (headerRowNum === -1 || priceColNum === -1) {
+    throw new Error('Не найдена строка с заголовками или колонка с ценами');
+  }
+  
+  // Обновляем цены и суммы для каждой позиции
+  let itemIndex = 0;
+  worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    if (rowNumber <= headerRowNum) return;
     
-    // Обновляем цены и суммы для каждой позиции
-    let itemIndex = 0;
-    worksheet.eachRow((row, rowNumber) => {
-      if (rowNumber <= headerRowNum) return;
+    const firstCell = row.getCell(1).value;
+    
+    // Проверяем, что это строка с данными
+    if (firstCell !== null && firstCell !== undefined) {
+      // Проверяем, что это не итоговая строка
+      const secondCell = row.getCell(2).value;
+      const rowText = (secondCell?.toString() || '').toLowerCase();
+      if (rowText.includes('итого') || rowText.includes('всего') || rowText.includes('ндс')) {
+        return;
+      }
       
-      const firstCell = row.getCell(1).value;
-      // Проверяем, что это строка с данными (номер или наименование)
-      if (firstCell && (typeof firstCell === 'number' || (typeof firstCell === 'string' && firstCell.trim()))) {
-        // Проверяем, что это не итоговая строка
-        const rowText = row.getCell(2).value?.toString().toLowerCase() || '';
-        if (rowText.includes('итого') || rowText.includes('всего')) return;
+      // Проверяем, что первая ячейка - это номер (число) или есть наименование
+      const isDataRow = (typeof firstCell === 'number') || 
+                        (typeof firstCell === 'string' && firstCell.trim() !== '' && 
+                         row.getCell(priceColNum).value !== null);
+      
+      if (isDataRow) {
+        const correction = correctionsMap.get(itemIndex);
         
-        const newPrice = correctionsMap.get(itemIndex);
-        if (newPrice !== undefined) {
-          // Обновляем цену
+        if (correction) {
           const priceCell = row.getCell(priceColNum);
-          priceCell.value = newPrice;
           
-          // Обновляем сумму, если есть колонка сумм
-          if (sumColNum > 0) {
-            const qtyCell = row.getCell(priceColNum - 1); // Колонка перед ценой обычно количество
-            const qty = typeof qtyCell.value === 'number' ? qtyCell.value : 1;
-            const sumCell = row.getCell(sumColNum);
-            sumCell.value = newPrice * qty;
+          if (correction.price !== null) {
+            // Устанавливаем новую цену
+            priceCell.value = correction.price;
+            
+            // Обновляем сумму, если есть колонка сумм и количество
+            if (sumColNum > 0 && qtyColNum > 0) {
+              const qtyCell = row.getCell(qtyColNum);
+              const qty = typeof qtyCell.value === 'number' ? qtyCell.value : 1;
+              const sumCell = row.getCell(sumColNum);
+              sumCell.value = correction.price * qty;
+            }
+          } else {
+            // Позиция не найдена в матрице - ставим "НЕТ"
+            priceCell.value = 'НЕТ';
+            
+            // Обнуляем сумму
+            if (sumColNum > 0) {
+              const sumCell = row.getCell(sumColNum);
+              sumCell.value = 0;
+            }
           }
         }
         
         itemIndex++;
       }
-    });
-    
-    // Сохраняем workbook
-    const outputBuffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([outputBuffer], { 
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
-    });
-    saveAs(blob, `Заказ_с_ценами_матрицы_${new Date().toISOString().slice(0, 10)}.xlsx`);
-  } catch (error) {
-    // Fallback: если не удалось сохранить форматирование, используем стандартный экспорт
-    console.warn('Не удалось сохранить форматирование, используем стандартный экспорт:', error);
-    
-    const wb = XLSX.utils.book_new();
-    const wsData: any[][] = [];
-    
-    // Шапка заказа
-    wsData.push([`Заказ поставщику ${orderData.header.orderNumber ? '№ ' + orderData.header.orderNumber : ''} ${orderData.header.orderDate ? 'от ' + orderData.header.orderDate : ''}`]);
-    wsData.push([]);
-    
-    if (orderData.header.supplier) wsData.push(['Поставщик:', orderData.header.supplier]);
-    if (orderData.header.buyer) wsData.push(['Покупатель:', orderData.header.buyer]);
-    if (orderData.header.receiver) wsData.push(['Грузополучатель:', orderData.header.receiver]);
-    if (orderData.header.warehouse) wsData.push(['Склад:', orderData.header.warehouse]);
-    
-    wsData.push([]);
-    
-    // Заголовки таблицы
-    wsData.push(['№', 'Штрихкод', 'Наименование', 'Квант', 'Кол-во', 'Ед.', 'Цена', 'Сумма']);
-    
-    // Строки данных с новыми ценами
-    orderData.items.forEach((item, idx) => {
-      const newPrice = correctionsMap.get(idx);
-      const price = newPrice !== undefined ? newPrice : item.price;
-      const quantity = item.quantity || 1;
-      const sum = price * quantity;
-      
-      wsData.push([
-        item.rowNumber,
-        item.barcode,
-        item.name,
-        item.quant,
-        item.quantity,
-        item.unit,
-        price,
-        sum,
-      ]);
-    });
-    
-    // Итого
-    const totalSum = orderData.items.reduce((acc, item, idx) => {
-      const newPrice = correctionsMap.get(idx);
-      const price = newPrice !== undefined ? newPrice : item.price;
-      const quantity = item.quantity || 1;
-      return acc + (price * quantity);
-    }, 0);
-    
-    wsData.push([]);
-    wsData.push(['Итого', '', '', '', '', '', '', totalSum]);
-    
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
-    ws['!cols'] = [
-      { wch: 5 }, { wch: 14 }, { wch: 50 }, { wch: 8 }, { wch: 8 }, { wch: 6 }, { wch: 12 }, { wch: 14 },
-    ];
-    
-    XLSX.utils.book_append_sheet(wb, ws, 'Заказ');
-    
-    const wbout = XLSX.write(wb, { bookType: 'xlsx', bookSST: false, type: 'array' });
-    const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    saveAs(blob, `Заказ_с_ценами_матрицы_${new Date().toISOString().slice(0, 10)}.xlsx`);
-  }
+    }
+  });
+  
+  // Сохраняем workbook
+  const outputBuffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([outputBuffer], { 
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+  });
+  saveAs(blob, `Заказ_с_ценами_матрицы_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
