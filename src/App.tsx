@@ -139,8 +139,21 @@ function App() {
 
   // Export order with matrix prices
   const handleExportOrderWithMatrixPrices = useCallback(async () => {
-    if (!result || !orderFile) return;
-    await exportOrderWithMatrixPrices(result, orderFile);
+    if (!result || !orderFile) {
+      setError('Нет данных для экспорта');
+      return;
+    }
+    
+    try {
+      setIsProcessing(true);
+      setError(null);
+      await exportOrderWithMatrixPrices(result, orderFile);
+    } catch (err) {
+      console.error('Ошибка при экспорте:', err);
+      setError(`Ошибка при создании файла: ${(err as Error).message}`);
+    } finally {
+      setIsProcessing(false);
+    }
   }, [result, orderFile]);
 
   // View history entry
@@ -345,10 +358,20 @@ function App() {
                 </button>
                 <button
                   onClick={() => handleExportOrderWithMatrixPrices()}
-                  className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center gap-1 transition-colors"
+                  disabled={isProcessing}
+                  className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center gap-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   title="Экспорт заказа с ценами из матрицы"
                 >
-                  <FileText className="w-4 h-4" /> Заказ с эталонными ценами
+                  {isProcessing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Создание файла...
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="w-4 h-4" /> Заказ с эталонными ценами
+                    </>
+                  )}
                 </button>
               </div>
             </div>
