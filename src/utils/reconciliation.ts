@@ -98,6 +98,8 @@ export function reconcile(
     results: allResults,
     summary,
     orderData: firstOrder,
+    orderDatas: ordersData,
+    orderFileNames,
     matrixData,
     selectedColumn,
     timestamp: new Date().toISOString(),

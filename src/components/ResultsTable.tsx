@@ -9,6 +9,7 @@ import { formatPrice, formatPercent } from '../utils/normalization';
 
 interface ResultsTableProps {
   results: ReconciliationResult[];
+  orderFileNames?: string[];
 }
 
 const STATUS_CONFIG: Record<ReconciliationStatus, { label: string; color: string; bg: string }> = {
@@ -29,9 +30,12 @@ const FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: 'no_price', label: 'Нет цены' },
 ];
 
-export const ResultsTable: React.FC<ResultsTableProps> = ({ results }) => {
+export const ResultsTable: React.FC<ResultsTableProps> = ({ results, orderFileNames }) => {
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
+  
+  // Определяем, показывать ли колонку источника
+  const showSource = orderFileNames && orderFileNames.length > 1;
 
   const filteredResults = useMemo(() => {
     let filtered = results;

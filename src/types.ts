@@ -121,6 +121,8 @@ export interface ReconciliationFull {
   results: ReconciliationResult[];
   summary: ReconciliationSummary;
   orderData: OrderData;
+  orderDatas: OrderData[];
+  orderFileNames: string[];
   matrixData: MatrixData;
   selectedColumn: MatrixWarehouseColumn | null;
   timestamp: string;
