@@ -124,6 +124,7 @@ export interface ReconciliationFull {
   matrixData: MatrixData;
   selectedColumn: MatrixWarehouseColumn | null;
   timestamp: string;
+  orderFileName: string;
 }
 
 export interface HistoryEntry {
