@@ -9,7 +9,7 @@ import { formatPrice } from '../utils/normalization';
 import {
   CorrectionOptions,
   DEFAULT_CORRECTION_OPTIONS,
-  generateCorrectedOrder,
+  generateCorrectedOrderBlob,
   countCorrections,
   sumCorrections,
 } from '../utils/correction';
@@ -25,6 +25,8 @@ export const CorrectionPanel: React.FC<CorrectionPanelProps> = ({ data }) => {
   const [error, setError] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [downloadFileName, setDownloadFileName] = useState<string>('');
 
   // Подсчёт количества корректировок и суммы
   const stats = useMemo(() => {
@@ -74,12 +76,36 @@ export const CorrectionPanel: React.FC<CorrectionPanelProps> = ({ data }) => {
       // Небольшая задержка для отображения индикатора загрузки
       await new Promise(resolve => setTimeout(resolve, 100));
       
-      generateCorrectedOrder(data, effectiveOptions);
+      // Генерируем файл и получаем blob
+      const blob = await generateCorrectedOrderBlob(data, effectiveOptions);
+      const fileName = `Заказ_исправленный_${new Date().toISOString().slice(0, 10)}.xlsx`;
       
-      setSuccessMessage('Файл успешно создан и скачан!');
-      
-      // Скрыть сообщение через 3 секунды
-      setTimeout(() => setSuccessMessage(null), 3000);
+      // Создаём data URL для скачивания
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        setDownloadUrl(dataUrl);
+        setDownloadFileName(fileName);
+        
+        // Пытаемся автоматически скачать
+        try {
+          const link = document.createElement('a');
+          link.href = dataUrl;
+          link.download = fileName;
+          link.style.display = 'none';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          setSuccessMessage('Файл успешно создан и скачан!');
+        } catch (e) {
+          // Если автоматическое скачивание не сработало, показываем ссылку
+          setSuccessMessage('Файл создан! Нажмите на ссылку ниже для скачивания:');
+        }
+        
+        // Скрыть сообщение через 5 секунд (если есть ссылка, не скрываем)
+        setTimeout(() => setSuccessMessage(null), 5000);
+      };
+      reader.readAsDataURL(blob);
     } catch (err) {
       setError(`Ошибка при создании файла: ${(err as Error).message}`);
     } finally {
@@ -334,6 +360,32 @@ export const CorrectionPanel: React.FC<CorrectionPanelProps> = ({ data }) => {
         <div className="flex items-center gap-2 text-green-600 text-sm bg-green-50 p-3 rounded-lg">
           <CheckCircle2 className="w-4 h-4" />
           {successMessage}
+        </div>
+      )}
+
+      {/* Download link (fallback) */}
+      {downloadUrl && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+          <p className="text-sm text-blue-800 font-medium mb-2">
+            📥 Если файл не скачался автоматически, нажмите на ссылку:
+          </p>
+          <a
+            href={downloadUrl}
+            download={downloadFileName}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+          >
+            <Download className="w-4 h-4" />
+            Скачать {downloadFileName}
+          </a>
+          <button
+            onClick={() => {
+              setDownloadUrl(null);
+              setDownloadFileName('');
+            }}
+            className="ml-3 text-xs text-blue-600 hover:text-blue-700"
+          >
+            Скрыть
+          </button>
         </div>
       )}
 

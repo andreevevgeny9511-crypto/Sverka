@@ -37,12 +37,12 @@ interface CorrectionLog {
 }
 
 /**
- * Генерация скорректированного файла заказа в XLSX
+ * Генерация Blob скорректированного файла заказа в XLSX
  */
-export function generateCorrectedOrder(
+export function generateCorrectedOrderBlob(
   data: ReconciliationFull,
   options: CorrectionOptions
-): void {
+): Blob {
   const { orderData, results, selectedColumn } = data;
   
   if (!selectedColumn) {
@@ -92,7 +92,7 @@ export function generateCorrectedOrder(
 
   // Лист "Заказ (исправленный)"
   const headerRows = buildOrderHeader(orderData);
-  const dataRows = correctedItems.map((item, idx) => [
+  const dataRows = correctedItems.map((item) => [
     item.rowNumber,
     item.barcode,
     item.name,
@@ -152,12 +152,45 @@ export function generateCorrectedOrder(
   wsSummary['!cols'] = [{ wch: 35 }, { wch: 25 }];
   XLSX.utils.book_append_sheet(wb, wsSummary, 'Сводка');
 
-  // Сохраняем
+  // Возвращаем Blob
   const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-  const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+/**
+ * Генерация скорректированного файла заказа в XLSX (скачивание)
+ */
+export function generateCorrectedOrder(
+  data: ReconciliationFull,
+  options: CorrectionOptions
+): void {
+  const blob = generateCorrectedOrderBlob(data, options);
   const fileName = `Заказ_исправленный_${new Date().toISOString().slice(0, 10)}.xlsx`;
   
-  saveAs(blob, fileName);
+  // Пробуем стандартный способ через saveAs
+  try {
+    saveAs(blob, fileName);
+  } catch (e) {
+    // Fallback: если saveAs не работает (например, в iframe/sandbox),
+    // открываем в новой вкладке через data URL
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = fileName;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Если и это не сработало, открываем в новой вкладке
+      setTimeout(() => {
+        window.open(dataUrl, '_blank');
+      }, 100);
+    };
+    reader.readAsDataURL(blob);
+  }
 }
 
 /**
