@@ -49,6 +49,10 @@ export function generateCorrectedOrder(
     throw new Error('Не выбрана колонка склада — нечего корректировать');
   }
 
+  if (!orderData.items || orderData.items.length === 0) {
+    throw new Error('Нет данных заказа для корректировки');
+  }
+
   // Определяем, какие позиции нужно скорректировать
   const correctionsMap = buildCorrectionsMap(results, options);
   
@@ -152,6 +156,7 @@ export function generateCorrectedOrder(
   const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const fileName = `Заказ_исправленный_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  
   saveAs(blob, fileName);
 }
 

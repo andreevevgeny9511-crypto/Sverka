@@ -23,6 +23,8 @@ export const CorrectionPanel: React.FC<CorrectionPanelProps> = ({ data }) => {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Подсчёт количества корректировок и суммы
   const stats = useMemo(() => {
@@ -36,9 +38,22 @@ export const CorrectionPanel: React.FC<CorrectionPanelProps> = ({ data }) => {
     };
   }, [data.results, options, selectedIndices]);
 
+  // Проверка доступности корректировки
+  const canCorrect = data.selectedColumn !== null && data.results.length > 0;
+
   // Обработка скачивания
-  const handleDownload = () => {
+  const handleDownload = async () => {
     setError(null);
+    setSuccessMessage(null);
+    setIsDownloading(true);
+    
+    // Проверка на наличие колонки склада
+    if (!data.selectedColumn) {
+      setError('Не выбрана колонка склада. Вернитесь на шаг сверки и выберите склад вручную.');
+      setIsDownloading(false);
+      return;
+    }
+    
     try {
       const effectiveOptions = options.mode === 'selected'
         ? { ...options, selectedIndices }
@@ -46,12 +61,29 @@ export const CorrectionPanel: React.FC<CorrectionPanelProps> = ({ data }) => {
       
       if (effectiveOptions.mode === 'selected' && selectedIndices.size === 0) {
         setError('Выберите хотя бы одну позицию для корректировки');
+        setIsDownloading(false);
         return;
       }
 
+      if (stats.count === 0) {
+        setError('Нет позиций для корректировки');
+        setIsDownloading(false);
+        return;
+      }
+      
+      // Небольшая задержка для отображения индикатора загрузки
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       generateCorrectedOrder(data, effectiveOptions);
+      
+      setSuccessMessage('Файл успешно создан и скачан!');
+      
+      // Скрыть сообщение через 3 секунды
+      setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
-      setError((err as Error).message);
+      setError(`Ошибка при создании файла: ${(err as Error).message}`);
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -102,15 +134,33 @@ export const CorrectionPanel: React.FC<CorrectionPanelProps> = ({ data }) => {
             Замените цены в заказе на эталонные из матрицы и скачайте исправленный файл
           </p>
         </div>
-        <button
-          onClick={() => setShowAdvanced(!showAdvanced)}
-          className="flex items-center gap-1 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
-        >
-          <Settings2 className="w-4 h-4" />
-          {showAdvanced ? 'Скрыть' : 'Настройки'}
-        </button>
+        {canCorrect && (
+          <button
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="flex items-center gap-1 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
+          >
+            <Settings2 className="w-4 h-4" />
+            {showAdvanced ? 'Скрыть' : 'Настройки'}
+          </button>
+        )}
       </div>
 
+      {/* Предупреждение, если корректировка невозможна */}
+      {!canCorrect && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+          <p className="text-sm text-yellow-800 font-medium">
+            ⚠️ Корректировка недоступна
+          </p>
+          <p className="text-xs text-yellow-700 mt-1">
+            {!data.selectedColumn 
+              ? 'Не выбрана колонка склада. Выберите склад вручную из выпадающего списка выше.'
+              : 'Нет данных для корректировки. Убедитесь, что сверка выполнена успешно.'}
+          </p>
+        </div>
+      )}
+
+      {canCorrect && (
+        <>
       {/* Advanced settings */}
       {showAdvanced && (
         <div className="bg-gray-50 rounded-xl p-4 space-y-3">
@@ -279,6 +329,14 @@ export const CorrectionPanel: React.FC<CorrectionPanelProps> = ({ data }) => {
         </div>
       </div>
 
+      {/* Success message */}
+      {successMessage && (
+        <div className="flex items-center gap-2 text-green-600 text-sm bg-green-50 p-3 rounded-lg">
+          <CheckCircle2 className="w-4 h-4" />
+          {successMessage}
+        </div>
+      )}
+
       {/* Error */}
       {error && (
         <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 p-3 rounded-lg">
@@ -290,18 +348,29 @@ export const CorrectionPanel: React.FC<CorrectionPanelProps> = ({ data }) => {
       {/* Download button */}
       <button
         onClick={handleDownload}
-        disabled={stats.count === 0}
+        disabled={stats.count === 0 || isDownloading}
         className="w-full px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-medium
           hover:from-green-700 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed
           flex items-center justify-center gap-2 transition-all shadow-lg shadow-green-200"
       >
-        <Download className="w-5 h-5" />
-        Скачать исправленный заказ (XLSX)
+        {isDownloading ? (
+          <>
+            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            Создание файла...
+          </>
+        ) : (
+          <>
+            <Download className="w-5 h-5" />
+            Скачать исправленный заказ (XLSX)
+          </>
+        )}
       </button>
 
       <p className="text-xs text-gray-500 text-center">
         Файл будет содержать 3 листа: исправленный заказ, лог корректировок и сводку
       </p>
+        </>
+      )}
     </div>
   );
 };
