@@ -19,6 +19,7 @@ import { SettingsPanel } from './components/SettingsPanel';
 import { ResultsTable } from './components/ResultsTable';
 import { Summary } from './components/Summary';
 import { HistoryPanel } from './components/HistoryPanel';
+import { CorrectionPanel } from './components/CorrectionPanel';
 import {
   AppSettings,
   DEFAULT_SETTINGS,
@@ -359,6 +360,11 @@ function App() {
                   ))}
                 </select>
               </div>
+            )}
+
+            {/* Correction panel */}
+            {!result.summary.warehouseNotFound && (
+              <CorrectionPanel data={result} />
             )}
 
             {/* Results table */}
