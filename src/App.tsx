@@ -30,7 +30,7 @@ import {
 } from './types';
 import { parseOrderFile, parseMatrixFile } from './utils/parser';
 import { reconcile } from './utils/reconciliation';
-import { exportToXlsx, exportToCSV, exportToJSON } from './utils/export';
+import { exportToXlsx, exportToCSV, exportToJSON, exportOrderWithMatrixPrices } from './utils/export';
 import { loadSettings, saveSettings, loadHistory, saveToHistory, deleteFromHistory, clearHistory } from './utils/storage';
 
 type AppPage = 'main' | 'results';
@@ -125,6 +125,12 @@ function App() {
       case 'csv': exportToCSV(result); break;
       case 'json': exportToJSON(result); break;
     }
+  }, [result]);
+
+  // Export order with matrix prices
+  const handleExportOrderWithMatrixPrices = useCallback(() => {
+    if (!result) return;
+    exportOrderWithMatrixPrices(result);
   }, [result]);
 
   // View history entry
@@ -320,6 +326,13 @@ function App() {
                   className="px-3 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 flex items-center gap-1 transition-colors"
                 >
                   <Braces className="w-4 h-4" /> JSON
+                </button>
+                <button
+                  onClick={() => handleExportOrderWithMatrixPrices()}
+                  className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center gap-1 transition-colors"
+                  title="Экспорт заказа с ценами из матрицы"
+                >
+                  <FileText className="w-4 h-4" /> Заказ с эталонными ценами
                 </button>
               </div>
             </div>

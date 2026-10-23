@@ -125,8 +125,8 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, orderFileNa
             <tr>
               <th className="px-3 py-3 text-left font-semibold text-gray-600">№</th>
               <th className="px-3 py-3 text-left font-semibold text-gray-600 min-w-[250px]">Наименование (заказ)</th>
-              <th className="px-3 py-3 text-center font-semibold text-gray-600">Ед.</th>
               <th className="px-3 py-3 text-right font-semibold text-gray-600">Цена заказа</th>
+              <th className="px-3 py-3 text-center font-semibold text-gray-600">Ед.</th>
               <th className="px-3 py-3 text-right font-semibold text-gray-600">Кол-во</th>
               <th className="px-3 py-3 text-left font-semibold text-gray-600 min-w-[250px]">Наименование (матрица)</th>
               <th className="px-3 py-3 text-right font-semibold text-gray-600">Цена матрицы</th>
@@ -144,8 +144,8 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, orderFileNa
                   <td className="px-3 py-2 font-medium text-gray-800" title={r.orderItem.name}>
                     <span className="line-clamp-2">{r.orderItem.name}</span>
                   </td>
-                  <td className="px-3 py-2 text-center text-gray-600">{r.orderItem.unit || '—'}</td>
                   <td className="px-3 py-2 text-right font-mono">{formatPrice(r.orderItem.price)}</td>
+                  <td className="px-3 py-2 text-center text-gray-600">{r.orderItem.unit || '—'}</td>
                   <td className="px-3 py-2 text-right">{r.orderItem.quantity}</td>
                   <td className="px-3 py-2 text-gray-600" title={r.matrixName || ''}>
                     <span className="line-clamp-2">{r.matrixName || '—'}</span>
