@@ -124,14 +124,13 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, orderFileNa
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="px-3 py-3 text-left font-semibold text-gray-600">№</th>
-              <th className="px-3 py-3 text-left font-semibold text-gray-600 min-w-[150px]">Файл заказа</th>
               <th className="px-3 py-3 text-left font-semibold text-gray-600 min-w-[250px]">Наименование (заказ)</th>
+              <th className="px-3 py-3 text-center font-semibold text-gray-600">Ед.</th>
               <th className="px-3 py-3 text-right font-semibold text-gray-600">Цена заказа</th>
               <th className="px-3 py-3 text-right font-semibold text-gray-600">Кол-во</th>
               <th className="px-3 py-3 text-left font-semibold text-gray-600 min-w-[250px]">Наименование (матрица)</th>
               <th className="px-3 py-3 text-right font-semibold text-gray-600">Цена матрицы</th>
               <th className="px-3 py-3 text-right font-semibold text-gray-600">Дельта ₽</th>
-              <th className="px-3 py-3 text-right font-semibold text-gray-600">Дельта %</th>
               <th className="px-3 py-3 text-right font-semibold text-gray-600">Откл. сумма</th>
               <th className="px-3 py-3 text-center font-semibold text-gray-600">Статус</th>
             </tr>
@@ -142,12 +141,10 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, orderFileNa
               return (
                 <tr key={idx} className={`${getRowClass(r.status)} transition-colors`}>
                   <td className="px-3 py-2 text-gray-500">{r.orderItem.rowNumber}</td>
-                  <td className="px-3 py-2 text-gray-600 text-xs" title={r.orderFileName}>
-                    <span className="line-clamp-1">{r.orderFileName}</span>
-                  </td>
                   <td className="px-3 py-2 font-medium text-gray-800" title={r.orderItem.name}>
                     <span className="line-clamp-2">{r.orderItem.name}</span>
                   </td>
+                  <td className="px-3 py-2 text-center text-gray-600">{r.orderItem.unit || '—'}</td>
                   <td className="px-3 py-2 text-right font-mono">{formatPrice(r.orderItem.price)}</td>
                   <td className="px-3 py-2 text-right">{r.orderItem.quantity}</td>
                   <td className="px-3 py-2 text-gray-600" title={r.matrixName || ''}>
@@ -163,11 +160,6 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, orderFileNa
                     r.delta !== null ? (r.delta > 0 ? 'text-red-600' : r.delta < 0 ? 'text-blue-600' : 'text-gray-500') : ''
                   }`}>
                     {r.delta !== null ? `${r.delta > 0 ? '+' : ''}${formatPrice(r.delta)}` : '—'}
-                  </td>
-                  <td className={`px-3 py-2 text-right font-mono ${
-                    r.deltaPercent !== null ? (r.deltaPercent > 0 ? 'text-red-600' : r.deltaPercent < 0 ? 'text-blue-600' : '') : ''
-                  }`}>
-                    {r.deltaPercent !== null ? `${r.deltaPercent > 0 ? '+' : ''}${formatPercent(r.deltaPercent)}` : '—'}
                   </td>
                   <td className={`px-3 py-2 text-right font-mono font-medium ${
                     r.sumDelta !== null ? (r.sumDelta > 0 ? 'text-red-600' : r.sumDelta < 0 ? 'text-blue-600' : '') : ''

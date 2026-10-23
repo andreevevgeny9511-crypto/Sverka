@@ -22,15 +22,15 @@ import {
 } from './normalization';
 
 /**
- * Основная функция сверки (для одного заказа)
+ * Основная функция сверки
  */
-export function reconcileSingle(
+export function reconcile(
   orderData: OrderData,
   matrixData: MatrixData,
   settings: AppSettings,
   orderFileName: string,
   manualWarehouseColumn?: MatrixWarehouseColumn
-): ReconciliationResult[] {
+): ReconciliationFull {
   // 1. Определяем целевой склад из заказа
   const orderWarehouse = orderData.header.warehouse;
   
@@ -52,60 +52,19 @@ export function reconcileSingle(
     return reconcileItem(item, matrixData, selectedColumn, settings, warehouseNotFound, orderFileName);
   });
 
-  return results;
-}
-
-/**
- * Основная функция сверки (для нескольких заказов)
- */
-export function reconcile(
-  ordersData: OrderData[],
-  matrixData: MatrixData,
-  settings: AppSettings,
-  orderFileNames: string[],
-  manualWarehouseColumn?: MatrixWarehouseColumn
-): ReconciliationFull {
-  // Сверяем каждый заказ
-  const allResults: ReconciliationResult[] = [];
-  
-  ordersData.forEach((orderData, idx) => {
-    const orderFileName = orderFileNames[idx] || `Заказ ${idx + 1}`;
-    const results = reconcileSingle(orderData, matrixData, settings, orderFileName, manualWarehouseColumn);
-    allResults.push(...results);
-  });
-
-  // Используем первый заказ для сводки
-  const firstOrder = ordersData[0];
-  const orderWarehouse = firstOrder?.header.warehouse || '';
-  
-  // Находим колонку для сводки
-  let selectedColumn: MatrixWarehouseColumn | null = null;
-  let warehouseNotFound = false;
-  
-  if (manualWarehouseColumn) {
-    selectedColumn = manualWarehouseColumn;
-  } else if (settings.autoWarehouseSelect && orderWarehouse) {
-    selectedColumn = findWarehouseColumn(orderWarehouse, matrixData.warehouseColumns);
-    if (!selectedColumn) {
-      warehouseNotFound = true;
-    }
-  }
-
-  // Формируем сводку
-  const summary = buildSummary(allResults, orderWarehouse, selectedColumn, matrixData, warehouseNotFound);
+  // 4. Формируем сводку
+  const summary = buildSummary(results, orderWarehouse, selectedColumn, matrixData, warehouseNotFound);
 
   return {
-    results: allResults,
+    results,
     summary,
-    orderData: firstOrder,
-    orderDatas: ordersData,
-    orderFileNames,
+    orderData,
     matrixData,
     selectedColumn,
     timestamp: new Date().toISOString(),
+    orderFileName,
   };
 }
-
 /**
  * Поиск колонки склада в матрице
  */

@@ -24,20 +24,20 @@ export function exportToXlsx(data: ReconciliationFull): void {
 
   // Лист "Сверка"
   const verificationRows = [
-    ['Сверка цен', '', '', '', '', '', '', '', '', '', '', ''],
-    ['Дата:', new Date().toLocaleString('ru-RU'), '', '', '', '', '', '', '', '', '', ''],
-    ['Склад:', data.summary.warehouse, '', '', '', '', '', '', '', '', '', ''],
-    ['Колонка матрицы:', data.summary.matrixColumn, '', '', '', '', '', '', '', '', '', ''],
+    ['Сверка цен', '', '', '', '', '', '', '', '', '', ''],
+    ['Дата:', new Date().toLocaleString('ru-RU'), '', '', '', '', '', '', '', '', ''],
+    ['Склад:', data.summary.warehouse, '', '', '', '', '', '', '', '', ''],
+    ['Колонка матрицы:', data.summary.matrixColumn, '', '', '', '', '', '', '', '', ''],
     [],
-    ['№', 'Файл заказа', 'Наименование (заказ)', 'Цена заказа', 'Кол-во', 'Сумма заказа', 
-     'Наименование (матрица)', 'Цена матрицы', 'Сумма матрицы', 'Дельта (руб.)', 'Дельта (%)', 'Статус'],
+    ['№', 'Наименование (заказ)', 'Ед.', 'Цена заказа', 'Кол-во', 'Сумма заказа', 
+     'Наименование (матрица)', 'Цена матрицы', 'Сумма матрицы', 'Дельта (руб.)', 'Статус'],
   ];
 
   for (const r of data.results) {
     verificationRows.push([
       String(r.orderItem.rowNumber),
-      r.orderFileName,
       r.orderItem.name,
+      r.orderItem.unit || '',
       String(r.orderItem.price),
       String(r.orderItem.quantity),
       String(r.orderSum),
@@ -45,15 +45,14 @@ export function exportToXlsx(data: ReconciliationFull): void {
       r.matrixPrice !== null ? String(r.matrixPrice) : '',
       r.matrixSum !== null ? String(r.matrixSum) : '',
       r.delta !== null ? String(r.delta) : '',
-      r.deltaPercent !== null ? String(Math.round(r.deltaPercent * 10) / 10) : '',
       STATUS_LABELS[r.status] || r.status,
     ]);
   }
 
   const ws1 = XLSX.utils.aoa_to_sheet(verificationRows);
   ws1['!cols'] = [
-    { wch: 5 }, { wch: 50 }, { wch: 12 }, { wch: 8 }, { wch: 14 },
-    { wch: 50 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 20 },
+    { wch: 5 }, { wch: 50 }, { wch: 6 }, { wch: 12 }, { wch: 8 }, { wch: 14 },
+    { wch: 50 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 20 },
   ];
   XLSX.utils.book_append_sheet(wb, ws1, 'Сверка');
 
@@ -98,15 +97,15 @@ export function exportToCSV(data: ReconciliationFull): void {
   
   // Заголовок
   lines.push([
-    '№', 'Файл заказа', 'Наименование (заказ)', 'Цена заказа', 'Кол-во', 'Сумма заказа',
-    'Наименование (матрица)', 'Цена матрицы', 'Сумма матрицы', 'Дельта (руб.)', 'Дельта (%)', 'Статус'
+    '№', 'Наименование (заказ)', 'Ед.', 'Цена заказа', 'Кол-во', 'Сумма заказа',
+    'Наименование (матрица)', 'Цена матрицы', 'Сумма матрицы', 'Дельта (руб.)', 'Статус'
   ].join(separator));
 
   for (const r of data.results) {
     lines.push([
       r.orderItem.rowNumber,
-      `"${r.orderFileName}"`,
       `"${r.orderItem.name}"`,
+      `"${r.orderItem.unit || ''}"`,
       r.orderItem.price,
       r.orderItem.quantity,
       r.orderSum,
@@ -114,7 +113,6 @@ export function exportToCSV(data: ReconciliationFull): void {
       r.matrixPrice ?? '',
       r.matrixSum ?? '',
       r.delta ?? '',
-      r.deltaPercent !== null ? Math.round(r.deltaPercent * 10) / 10 : '',
       STATUS_LABELS[r.status] || r.status,
     ].join(separator));
   }
