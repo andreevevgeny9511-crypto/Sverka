@@ -138,10 +138,10 @@ function App() {
   }, [result]);
 
   // Export order with matrix prices
-  const handleExportOrderWithMatrixPrices = useCallback(() => {
-    if (!result) return;
-    exportOrderWithMatrixPrices(result);
-  }, [result]);
+  const handleExportOrderWithMatrixPrices = useCallback(async () => {
+    if (!result || !orderFile) return;
+    await exportOrderWithMatrixPrices(result, orderFile);
+  }, [result, orderFile]);
 
   // View history entry
   const handleViewHistory = useCallback((entry: HistoryEntry) => {
