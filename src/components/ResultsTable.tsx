@@ -120,6 +120,7 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results }) => {
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="px-3 py-3 text-left font-semibold text-gray-600">№</th>
+              <th className="px-3 py-3 text-left font-semibold text-gray-600 min-w-[150px]">Файл заказа</th>
               <th className="px-3 py-3 text-left font-semibold text-gray-600 min-w-[250px]">Наименование (заказ)</th>
               <th className="px-3 py-3 text-right font-semibold text-gray-600">Цена заказа</th>
               <th className="px-3 py-3 text-right font-semibold text-gray-600">Кол-во</th>
@@ -137,6 +138,9 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results }) => {
               return (
                 <tr key={idx} className={`${getRowClass(r.status)} transition-colors`}>
                   <td className="px-3 py-2 text-gray-500">{r.orderItem.rowNumber}</td>
+                  <td className="px-3 py-2 text-gray-600 text-xs" title={r.orderFileName}>
+                    <span className="line-clamp-1">{r.orderFileName}</span>
+                  </td>
                   <td className="px-3 py-2 font-medium text-gray-800" title={r.orderItem.name}>
                     <span className="line-clamp-2">{r.orderItem.name}</span>
                   </td>

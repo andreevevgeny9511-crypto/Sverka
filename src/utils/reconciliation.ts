@@ -22,14 +22,15 @@ import {
 } from './normalization';
 
 /**
- * Основная функция сверки
+ * Основная функция сверки (для одного заказа)
  */
-export function reconcile(
+export function reconcileSingle(
   orderData: OrderData,
   matrixData: MatrixData,
   settings: AppSettings,
+  orderFileName: string,
   manualWarehouseColumn?: MatrixWarehouseColumn
-): ReconciliationFull {
+): ReconciliationResult[] {
   // 1. Определяем целевой склад из заказа
   const orderWarehouse = orderData.header.warehouse;
   
@@ -48,16 +49,55 @@ export function reconcile(
 
   // 3. Сверяем каждую позицию
   const results: ReconciliationResult[] = orderData.items.map(item => {
-    return reconcileItem(item, matrixData, selectedColumn, settings, warehouseNotFound);
+    return reconcileItem(item, matrixData, selectedColumn, settings, warehouseNotFound, orderFileName);
   });
 
-  // 4. Формируем сводку
-  const summary = buildSummary(results, orderWarehouse, selectedColumn, matrixData, warehouseNotFound);
+  return results;
+}
+
+/**
+ * Основная функция сверки (для нескольких заказов)
+ */
+export function reconcile(
+  ordersData: OrderData[],
+  matrixData: MatrixData,
+  settings: AppSettings,
+  orderFileNames: string[],
+  manualWarehouseColumn?: MatrixWarehouseColumn
+): ReconciliationFull {
+  // Сверяем каждый заказ
+  const allResults: ReconciliationResult[] = [];
+  
+  ordersData.forEach((orderData, idx) => {
+    const orderFileName = orderFileNames[idx] || `Заказ ${idx + 1}`;
+    const results = reconcileSingle(orderData, matrixData, settings, orderFileName, manualWarehouseColumn);
+    allResults.push(...results);
+  });
+
+  // Используем первый заказ для сводки
+  const firstOrder = ordersData[0];
+  const orderWarehouse = firstOrder?.header.warehouse || '';
+  
+  // Находим колонку для сводки
+  let selectedColumn: MatrixWarehouseColumn | null = null;
+  let warehouseNotFound = false;
+  
+  if (manualWarehouseColumn) {
+    selectedColumn = manualWarehouseColumn;
+  } else if (settings.autoWarehouseSelect && orderWarehouse) {
+    selectedColumn = findWarehouseColumn(orderWarehouse, matrixData.warehouseColumns);
+    if (!selectedColumn) {
+      warehouseNotFound = true;
+    }
+  }
+
+  // Формируем сводку
+  const summary = buildSummary(allResults, orderWarehouse, selectedColumn, matrixData, warehouseNotFound);
 
   return {
-    results,
+    results: allResults,
     summary,
-    orderData,
+    orderData: firstOrder,
     matrixData,
     selectedColumn,
     timestamp: new Date().toISOString(),
@@ -106,10 +146,12 @@ function reconcileItem(
   matrixData: MatrixData,
   selectedColumn: MatrixWarehouseColumn | null,
   settings: AppSettings,
-  warehouseNotFound: boolean
+  warehouseNotFound: boolean,
+  orderFileName: string
 ): ReconciliationResult {
   const baseResult: ReconciliationResult = {
     orderItem: item as any,
+    orderFileName,
     status: 'NOT_FOUND_IN_MATRIX',
     matrixName: null,
     matrixPrice: null,
@@ -183,6 +225,7 @@ function reconcileItem(
 
   return {
     orderItem: item as any,
+    orderFileName,
     status,
     matrixName: matrixItem.name,
     matrixPrice,

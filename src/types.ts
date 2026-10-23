@@ -87,6 +87,7 @@ export type ReconciliationStatus =
 
 export interface ReconciliationResult {
   orderItem: OrderItem;
+  orderFileName: string;
   status: ReconciliationStatus;
   matrixName: string | null;
   matrixPrice: number | null;

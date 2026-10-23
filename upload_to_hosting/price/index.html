@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Price Reconciliation — Сверка цен</title>
+    <title>АТЛАС — Сверка цен</title>
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
@@ -60,7 +60,7 @@
         if (window.self === window.top) return;
         var reported = {};
         window.addEventListener("error", function (event) {
-          // 资源加载失败的 error 事件没有 message，此处仅上报 JS 运行时错误
+          // 资源加载失败的 error 事件没有 message，此处仅上报 JS 运行时 ошибки
           if (!event || !event.message) return;
           var key =
             event.message + "|" + (event.filename || "") + "|" + (event.lineno || 0);
@@ -89,8 +89,8 @@
         });
       })();
     </script>
-    <script type="module" crossorigin src="/price/assets/index-D2kyu6VO.js"></script>
-    <link rel="stylesheet" crossorigin href="/price/assets/index-C6c7mzZ4.css">
+    <script type="module" crossorigin src="/price/assets/index-MScLHWH4.js"></script>
+    <link rel="stylesheet" crossorigin href="/price/assets/index-ZpuVrNam.css">
   </head>
   <body>
     <div id="root"></div>
