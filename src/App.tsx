@@ -1,5 +1,5 @@
 /**
- * Главный компонент приложения Price Reconciliation
+ * Главный компонент приложения АТЛАС — Сверка цен
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
@@ -13,13 +13,13 @@ import {
   Loader2,
   AlertTriangle,
   CheckCircle2,
+  Trash2,
 } from 'lucide-react';
 import { FileUpload } from './components/FileUpload';
 import { SettingsPanel } from './components/SettingsPanel';
 import { ResultsTable } from './components/ResultsTable';
 import { Summary } from './components/Summary';
 import { HistoryPanel } from './components/HistoryPanel';
-import { CorrectionPanel } from './components/CorrectionPanel';
 import {
   AppSettings,
   DEFAULT_SETTINGS,
@@ -39,7 +39,7 @@ type AppPage = 'main' | 'results';
 function App() {
   // State
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
-  const [orderFile, setOrderFile] = useState<File | null>(null);
+  const [orderFiles, setOrderFiles] = useState<File[]>([]);
   const [matrixFile, setMatrixFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +51,7 @@ function App() {
   const [page, setPage] = useState<AppPage>('main');
   
   // Cached parsed data for re-running with different column
-  const [parsedOrderData, setParsedOrderData] = useState<OrderData | null>(null);
+  const [parsedOrdersData, setParsedOrdersData] = useState<OrderData[]>([]);
   const [parsedMatrixData, setParsedMatrixData] = useState<MatrixData | null>(null);
 
   // Load settings and history on mount
@@ -66,10 +66,35 @@ function App() {
     saveSettings(newSettings);
   }, []);
 
+  // Add order file
+  const handleAddOrderFile = useCallback((file: File) => {
+    if (orderFiles.length >= 5) {
+      setError('Максимум 5 файлов заказов');
+      return;
+    }
+    // Проверяем дубликаты
+    if (orderFiles.some(f => f.name === file.name && f.size === file.size)) {
+      setError(`Файл "${file.name}" уже добавлен`);
+      return;
+    }
+    setError(null);
+    setOrderFiles(prev => [...prev, file]);
+  }, [orderFiles]);
+
+  // Remove order file
+  const handleRemoveOrderFile = useCallback((index: number) => {
+    setOrderFiles(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
+  // Clear all order files
+  const handleClearOrderFiles = useCallback(() => {
+    setOrderFiles([]);
+  }, []);
+
   // Run reconciliation
   const handleReconcile = useCallback(async () => {
-    if (!orderFile || !matrixFile) {
-      setError('Загрузите оба файла');
+    if (orderFiles.length === 0 || !matrixFile) {
+      setError('Загрузите матрицу и хотя бы один файл заказа');
       return;
     }
 
@@ -77,15 +102,17 @@ function App() {
     setError(null);
 
     try {
-      const [orderData, matrixData] = await Promise.all([
-        parseOrderFile(orderFile),
+      // Парсим все файлы параллельно
+      const [ordersData, matrixData] = await Promise.all([
+        Promise.all(orderFiles.map(f => parseOrderFile(f))),
         parseMatrixFile(matrixFile),
       ]);
 
-      setParsedOrderData(orderData);
+      setParsedOrdersData(ordersData);
       setParsedMatrixData(matrixData);
 
-      const reconciliationResult = reconcile(orderData, matrixData, settings, manualColumn || undefined);
+      const orderFileNames = orderFiles.map(f => f.name);
+      const reconciliationResult = reconcile(ordersData, matrixData, settings, orderFileNames, manualColumn || undefined);
       setResult(reconciliationResult);
       setPage('results');
 
@@ -93,7 +120,7 @@ function App() {
       const historyEntry: HistoryEntry = {
         id: Date.now().toString(),
         timestamp: new Date().toISOString(),
-        orderFileName: orderFile.name,
+        orderFileName: orderFiles.map(f => f.name).join(', '),
         matrixFileName: matrixFile.name,
         summary: reconciliationResult.summary,
         results: reconciliationResult.results,
@@ -105,18 +132,19 @@ function App() {
     } finally {
       setIsProcessing(false);
     }
-  }, [orderFile, matrixFile, settings, manualColumn]);
+  }, [orderFiles, matrixFile, settings, manualColumn]);
 
   // Re-run with manual column selection
   const handleSelectManualColumn = useCallback((colFullName: string) => {
-    if (!parsedOrderData || !parsedMatrixData) return;
+    if (!parsedOrdersData || !parsedMatrixData) return;
     const col = parsedMatrixData.warehouseColumns.find((wc) => wc.fullName === colFullName);
     if (col) {
       setManualColumn(col);
-      const reconciliationResult = reconcile(parsedOrderData, parsedMatrixData, settings, col);
+      const orderFileNames = orderFiles.map(f => f.name);
+      const reconciliationResult = reconcile(parsedOrdersData, parsedMatrixData, settings, orderFileNames, col);
       setResult(reconciliationResult);
     }
-  }, [parsedOrderData, parsedMatrixData, settings]);
+  }, [parsedOrdersData, parsedMatrixData, settings, orderFiles]);
 
   // Export handlers
   const handleExport = useCallback((format: 'xlsx' | 'csv' | 'json') => {
@@ -154,8 +182,8 @@ function App() {
                 <FileSpreadsheet className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h1 className="text-lg font-bold text-gray-800">Price Reconciliation</h1>
-                <p className="text-xs text-gray-500 -mt-0.5">Сверка цен заказа с матрицей</p>
+                <h1 className="text-lg font-bold text-gray-800">АТЛАС</h1>
+                <p className="text-xs text-gray-500 -mt-0.5">Сверка цен заказов с матрицей</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -181,45 +209,96 @@ function App() {
       {/* Main content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {page === 'main' && (
-          <div className="space-y-8">
-            {/* Upload section */}
+          <div className="space-y-6">
+            {/* Upload section - two columns */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
               <h2 className="text-lg font-bold text-gray-800 mb-6">Загрузка файлов</h2>
+              
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <FileUpload
-                  label="Заказ поставщику"
-                  description="Файл заказа с ценами для сверки"
-                  file={orderFile}
-                  onFileSelect={setOrderFile}
-                  onClear={() => setOrderFile(null)}
-                  maxSizeMB={settings.maxFileSizeMB}
-                  showGoogleDrive
-                />
-                <FileUpload
-                  label="Матрица товаров"
-                  description="Файл с эталонными ценами"
-                  file={matrixFile}
-                  onFileSelect={setMatrixFile}
-                  onClear={() => setMatrixFile(null)}
-                  maxSizeMB={settings.maxFileSizeMB}
-                  showGoogleDrive
-                />
+                {/* Left column: Matrix */}
+                <div>
+                  <FileUpload
+                    label="Матрица товаров"
+                    description="Файл с эталонными ценами"
+                    file={matrixFile}
+                    onFileSelect={setMatrixFile}
+                    onClear={() => setMatrixFile(null)}
+                    maxSizeMB={settings.maxFileSizeMB}
+                    showGoogleDrive
+                  />
+                </div>
+
+                {/* Right column: Orders (multiple) */}
+                <div>
+                  <div className="space-y-3">
+                    <label className="block text-sm font-semibold text-gray-700">
+                      Заказы поставщиков
+                    </label>
+                    <p className="text-xs text-gray-500">
+                      Можно загрузить до 5 файлов заказов одновременно
+                    </p>
+                    
+                    {/* Order files list */}
+                    {orderFiles.length > 0 && (
+                      <div className="space-y-2 mb-3">
+                        {orderFiles.map((file, idx) => (
+                          <div key={idx} className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                            <FileText className="w-4 h-4 text-green-600 flex-shrink-0" />
+                            <span className="text-sm text-green-800 truncate flex-1">{file.name}</span>
+                            <span className="text-xs text-green-600 flex-shrink-0">
+                              {(file.size / 1024).toFixed(0)} КБ
+                            </span>
+                            <button
+                              onClick={() => handleRemoveOrderFile(idx)}
+                              className="p-1 text-red-500 hover:bg-red-100 rounded"
+                              title="Удалить"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                        {orderFiles.length > 0 && (
+                          <button
+                            onClick={handleClearOrderFiles}
+                            className="text-xs text-gray-500 hover:text-gray-700"
+                          >
+                            Очистить все
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Add more files button */}
+                    {orderFiles.length < 5 && (
+                      <FileUpload
+                        label=""
+                        description={orderFiles.length === 0 ? 'Перетащите файл или выберите' : `Добавить ещё (${orderFiles.length}/5)`}
+                        file={null}
+                        onFileSelect={handleAddOrderFile}
+                        onClear={() => {}}
+                        maxSizeMB={settings.maxFileSizeMB}
+                        showGoogleDrive={orderFiles.length === 0}
+                      />
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* Action button */}
               <div className="mt-6 flex items-center justify-between flex-wrap gap-4">
                 <p className="text-sm text-gray-500">
-                  {orderFile && matrixFile ? (
+                  {matrixFile && orderFiles.length > 0 ? (
                     <span className="flex items-center gap-1 text-green-600">
-                      <CheckCircle2 className="w-4 h-4" /> Оба файла загружены — готово к сверке
+                      <CheckCircle2 className="w-4 h-4" /> 
+                      Готово к сверке: {orderFiles.length} {orderFiles.length === 1 ? 'заказ' : orderFiles.length < 5 ? 'заказа' : 'заказов'}
                     </span>
                   ) : (
-                    'Загрузите оба файла для начала сверки'
+                    'Загрузите матрицу и хотя бы один файл заказа'
                   )}
                 </p>
                 <button
                   onClick={handleReconcile}
-                  disabled={!orderFile || !matrixFile || isProcessing}
+                  disabled={orderFiles.length === 0 || !matrixFile || isProcessing}
                   className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-medium 
                     hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed
                     flex items-center gap-2 transition-all shadow-lg shadow-blue-200"
@@ -260,7 +339,7 @@ function App() {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-gray-700">Загрузите файлы</p>
-                    <p className="text-xs text-gray-500 mt-1">Заказ поставщику и Матрицу товаров в форматах .xlsx или .xls</p>
+                    <p className="text-xs text-gray-500 mt-1">Матрицу товаров и до 5 файлов заказов (.xlsx/.xls)</p>
                   </div>
                 </div>
                 <div className="flex gap-3">
@@ -269,7 +348,7 @@ function App() {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-gray-700">Автоматическая сверка</p>
-                    <p className="text-xs text-gray-500 mt-1">Система определит склад из заказа и сопоставит цены с эталонными</p>
+                    <p className="text-xs text-gray-500 mt-1">Система сопоставит цены всех заказов с эталонными из матрицы</p>
                   </div>
                 </div>
                 <div className="flex gap-3">
@@ -281,21 +360,6 @@ function App() {
                     <p className="text-xs text-gray-500 mt-1">Просмотр расхождений с фильтрами, экспорт в XLSX, CSV или JSON</p>
                   </div>
                 </div>
-              </div>
-            </div>
-
-            {/* Features */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-              <h3 className="text-sm font-semibold text-gray-700 mb-4">Возможности</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <FeatureItem emoji="📊" text="Сверка цен по складам с учётом классов A/B/C" />
-                <FeatureItem emoji="🔍" text="Fuzzy-сопоставление наименований (token set ratio)" />
-                <FeatureItem emoji="⚙️" text="Настраиваемый допуск, порог fuzzy, режимы" />
-                <FeatureItem emoji="💾" text="Экспорт в XLSX (2 листа), CSV, JSON" />
-                <FeatureItem emoji="📁" text="Поддержка .xlsx и .xls форматов" />
-                <FeatureItem emoji="🕐" text="История сверок с возможностью просмотра" />
-                <FeatureItem emoji="🔗" text="Загрузка по ссылке Google Drive" />
-                <FeatureItem emoji="📋" text="Устойчивый парсинг без привязки к координатам" />
               </div>
             </div>
           </div>
@@ -362,11 +426,6 @@ function App() {
               </div>
             )}
 
-            {/* Correction panel */}
-            {!result.summary.warehouseNotFound && (
-              <CorrectionPanel data={result} />
-            )}
-
             {/* Results table */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
               <h2 className="text-lg font-bold text-gray-800 mb-4">Результаты сверки</h2>
@@ -380,7 +439,7 @@ function App() {
       <footer className="border-t border-gray-200 bg-white mt-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <p className="text-center text-xs text-gray-400">
-            Price Reconciliation Service — Сверка цен заказа с эталонной матрицей товаров
+            АТЛАС — Сервис сверки цен заказов с эталонной матрицей товаров
           </p>
         </div>
       </footer>
@@ -408,16 +467,6 @@ function App() {
           setHistory([]);
         }}
       />
-    </div>
-  );
-}
-
-// Feature item component
-function FeatureItem({ emoji, text }: { emoji: string; text: string }) {
-  return (
-    <div className="flex items-start gap-2">
-      <span className="text-lg">{emoji}</span>
-      <span className="text-xs text-gray-600">{text}</span>
     </div>
   );
 }

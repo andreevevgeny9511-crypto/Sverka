@@ -24,18 +24,19 @@ export function exportToXlsx(data: ReconciliationFull): void {
 
   // Лист "Сверка"
   const verificationRows = [
-    ['Сверка цен', '', '', '', '', '', '', '', '', '', ''],
-    ['Дата:', new Date().toLocaleString('ru-RU'), '', '', '', '', '', '', '', '', ''],
-    ['Склад:', data.summary.warehouse, '', '', '', '', '', '', '', '', ''],
-    ['Колонка матрицы:', data.summary.matrixColumn, '', '', '', '', '', '', '', '', ''],
+    ['Сверка цен', '', '', '', '', '', '', '', '', '', '', ''],
+    ['Дата:', new Date().toLocaleString('ru-RU'), '', '', '', '', '', '', '', '', '', ''],
+    ['Склад:', data.summary.warehouse, '', '', '', '', '', '', '', '', '', ''],
+    ['Колонка матрицы:', data.summary.matrixColumn, '', '', '', '', '', '', '', '', '', ''],
     [],
-    ['№', 'Наименование (заказ)', 'Цена заказа', 'Кол-во', 'Сумма заказа', 
+    ['№', 'Файл заказа', 'Наименование (заказ)', 'Цена заказа', 'Кол-во', 'Сумма заказа', 
      'Наименование (матрица)', 'Цена матрицы', 'Сумма матрицы', 'Дельта (руб.)', 'Дельта (%)', 'Статус'],
   ];
 
   for (const r of data.results) {
     verificationRows.push([
       String(r.orderItem.rowNumber),
+      r.orderFileName,
       r.orderItem.name,
       String(r.orderItem.price),
       String(r.orderItem.quantity),
@@ -97,13 +98,14 @@ export function exportToCSV(data: ReconciliationFull): void {
   
   // Заголовок
   lines.push([
-    '№', 'Наименование (заказ)', 'Цена заказа', 'Кол-во', 'Сумма заказа',
+    '№', 'Файл заказа', 'Наименование (заказ)', 'Цена заказа', 'Кол-во', 'Сумма заказа',
     'Наименование (матрица)', 'Цена матрицы', 'Сумма матрицы', 'Дельта (руб.)', 'Дельта (%)', 'Статус'
   ].join(separator));
 
   for (const r of data.results) {
     lines.push([
       r.orderItem.rowNumber,
+      `"${r.orderFileName}"`,
       `"${r.orderItem.name}"`,
       r.orderItem.price,
       r.orderItem.quantity,
