@@ -52,6 +52,7 @@ function App() {
   // Cached parsed data for re-running with different column
   const [parsedOrderData, setParsedOrderData] = useState<OrderData | null>(null);
   const [parsedMatrixData, setParsedMatrixData] = useState<MatrixData | null>(null);
+  const [availableWarehouses, setAvailableWarehouses] = useState<MatrixWarehouseColumn[]>([]);
 
   // Load settings and history on mount
   useEffect(() => {
@@ -83,6 +84,7 @@ function App() {
 
       setParsedOrderData(orderData);
       setParsedMatrixData(matrixData);
+      setAvailableWarehouses(matrixData.warehouseColumns);
 
       const reconciliationResult = reconcile(orderData, matrixData, settings, orderFile.name, manualColumn || undefined);
       setResult(reconciliationResult);
@@ -115,6 +117,14 @@ function App() {
       const reconciliationResult = reconcile(parsedOrderData, parsedMatrixData, settings, orderFile?.name || '', col);
       setResult(reconciliationResult);
     }
+  }, [parsedOrderData, parsedMatrixData, settings, orderFile]);
+
+  // Reset manual column selection (use auto-detection)
+  const handleResetWarehouse = useCallback(() => {
+    setManualColumn(null);
+    if (!parsedOrderData || !parsedMatrixData || !orderFile) return;
+    const reconciliationResult = reconcile(parsedOrderData, parsedMatrixData, settings, orderFile.name, undefined);
+    setResult(reconciliationResult);
   }, [parsedOrderData, parsedMatrixData, settings, orderFile]);
 
   // Export handlers
@@ -209,8 +219,14 @@ function App() {
                   label="Заказ поставщику"
                   description="Файл заказа с ценами для сверки"
                   file={orderFile}
-                  onFileSelect={setOrderFile}
-                  onClear={() => setOrderFile(null)}
+                  onFileSelect={(file) => {
+                    setOrderFile(file);
+                    setManualColumn(null); // Reset manual selection on new order
+                  }}
+                  onClear={() => {
+                    setOrderFile(null);
+                    setManualColumn(null);
+                  }}
                   maxSizeMB={settings.maxFileSizeMB}
                   showGoogleDrive
                 />
@@ -340,20 +356,31 @@ function App() {
             {/* Summary */}
             <Summary summary={result.summary} />
 
-            {/* Warehouse column selector (if not found) */}
-            {result.summary.warehouseNotFound && parsedMatrixData && (
-              <div className="bg-white rounded-xl border border-orange-200 p-4">
-                <h3 className="text-sm font-semibold text-orange-800 mb-2">
-                  ⚠️ Склад не найден — выберите колонку вручную
-                </h3>
-                <p className="text-xs text-orange-600 mb-3">
-                  Склад «{result.summary.warehouse}» не найден среди колонок матрицы. 
-                  Выберите нужную колонку из списка ниже:
-                </p>
+            {/* Warehouse selector */}
+            {parsedMatrixData && (
+              <div className="bg-white rounded-xl border border-gray-200 p-4">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-800">Склад для сверки</h3>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {result.summary.warehouseNotFound 
+                        ? `Склад «${result.summary.warehouse}» из заказа не найден в матрице. Выберите вручную:`
+                        : `Автоматически определён склад «${result.selectedColumn?.name || result.summary.warehouse}» из заказа. Можно изменить:`}
+                    </p>
+                  </div>
+                  {manualColumn && (
+                    <button
+                      onClick={handleResetWarehouse}
+                      className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                    >
+                      ↺ Автоопределение
+                    </button>
+                  )}
+                </div>
                 <select
+                  value={result.selectedColumn?.fullName || ''}
                   onChange={(e) => handleSelectManualColumn(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500"
-                  defaultValue=""
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="" disabled>— Выберите склад —</option>
                   {parsedMatrixData.warehouseColumns.map((wc) => (
